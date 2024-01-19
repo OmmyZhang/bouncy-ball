@@ -19,7 +19,7 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.4.0
         with:
-          version: 'latest'
+          version: 'v0.18.6'
       - name: Build
         run: trunk build --release --public-url="//cdn.jsdelivr.net/gh/ommyzhang/bouncy-ball@gh-pages/" --no-sri
       - name: Deploy to GitHub Pages
