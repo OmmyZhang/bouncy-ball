@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use gloo_console::log;
 use gloo_timers::callback::Interval;
 use web_sys::wasm_bindgen::JsValue;
-use web_sys::{CanvasRenderingContext2d, Event, HtmlCanvasElement, HtmlImageElement};
+use web_sys::{CanvasRenderingContext2d, Event, HtmlCanvasElement, HtmlImageElement, PointerEvent};
 use yew::{
     function_component, html, use_effect_with, use_mut_ref, use_node_ref, use_state, Callback,
     Html, Properties, TargetCast,
@@ -17,7 +17,7 @@ const BG_COLOR: &str = "#5050e0";
 
 const INTERV: u32 = 8;
 const NEXT_BALL_TIME: u32 = 10;
-const V: f64 = 5.0;
+const V: f64 = 12.0;
 
 const NEW_BALL_ID: u32 = 99999;
 
@@ -56,17 +56,20 @@ struct MapStatus {
 impl MapStatus {
     fn update_blocks_and_check_game_end(&mut self, level: u32) -> bool {
         let last_line = self.block_map.pop_back().unwrap();
-        log!(JsValue::from_str(&format!("{:#?}", &last_line)));
         if last_line.into_iter().any(|v| v > 0) {
             return true;
         }
 
         let new_line = vec![level; self.mw]; // TODO
-        log!(JsValue::from_str(&format!("{:#?}", &new_line)));
         self.block_map.push_front(new_line);
-        log!(JsValue::from_str(&format!("{}", self.block_map.len())));
 
         self.draw_basic();
+
+        let (x, y) = (
+            self.mw as f64 * BLOCK_SIZE / 2.0,
+            self.mh as f64 * BLOCK_SIZE - BALL_SIZE / 2.0,
+        );
+        self.draw_ball(x, y);
 
         false
     }
@@ -279,21 +282,42 @@ pub fn game(props: &Props) -> Html {
     let canvas_ref = use_node_ref();
 
     let is_moving = use_state(|| false);
+
     let map_status = use_mut_ref(MapStatus::default);
     let simulation_interval = use_mut_ref(|| None);
+    let start_pos = use_mut_ref(|| (0.0, 0.0));
 
     // 点击
     let onclick = {
-        clone_all![is_moving, map_status, simulation_interval, n_balls, level];
-        Callback::from(move |event| {
+        clone_all![
+            is_moving,
+            map_status,
+            simulation_interval,
+            n_balls,
+            level,
+            start_pos
+        ];
+        Callback::from(move |event: PointerEvent| {
             if *is_moving {
                 return;
             }
+            let (x, y) = (event.client_x() as f64, event.client_y() as f64);
+            let (ox, oy) = *start_pos.borrow();
+
+            let (dx, dy) = (x - ox, y - oy);
+            if dy > -20.0 {
+                return;
+            }
+
+            let (vx, vy) = (
+                dx / (dx * dx + dy * dy).sqrt() * V,
+                dy / (dx * dx + dy * dy).sqrt() * V,
+            );
+
+            map_status.borrow_mut().vx = vx;
+            map_status.borrow_mut().vy = vy;
 
             is_moving.set(true);
-
-            map_status.borrow_mut().vx = 0.8 * V;
-            map_status.borrow_mut().vy = -0.6 * V;
             map_status.borrow_mut().n_waiting_bolls = *n_balls;
 
             *simulation_interval.borrow_mut() = {
@@ -322,6 +346,7 @@ pub fn game(props: &Props) -> Html {
         Callback::from(move |event: Event| {
             let ball = event.target_dyn_into::<HtmlImageElement>().unwrap();
             map_status.borrow_mut().img = Some(ball);
+            map_status.borrow_mut().update_blocks_and_check_game_end(1);
         })
     };
 
@@ -348,6 +373,10 @@ pub fn game(props: &Props) -> Html {
                 ctx.set_font("45px  sans-serif");
                 ctx.set_text_baseline("middle");
                 ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
+
+                // if canvas , set start_pos as canvas center bottom BASED ON client
+                let rect = canvas.get_bounding_client_rect();
+                *start_pos.borrow_mut() = (rect.width() / 2.0 + rect.left(), rect.bottom());
 
                 map_status.borrow_mut().ctx = Some(ctx);
                 map_status.borrow_mut().moving_balls = vec![];
@@ -380,9 +409,8 @@ pub fn game(props: &Props) -> Html {
                 <span id="score">{ *n_balls }</span>
                 <span id="level">{ * level }</span>
             </div>
-            <canvas
-                ref={canvas_ref}
-                onclick={onclick}
+            <canvas ref={canvas_ref}
+            onpointerdown={onclick}
             />
         </div>
     }
