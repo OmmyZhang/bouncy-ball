@@ -18,10 +18,12 @@ const BLOCK_BORDER: f64 = 6.0;
 
 const BG_COLOR: &str = "#5050e0";
 
-const INTERV: u32 = 80;
+const INTERV: u32 = 8;
 const NEXT_BALL_TIME_DIST: f64 = 3.0 * BALL_SIZE;
 
 const NEW_BALL_ID: u32 = 99999;
+
+const EPS: f64 = 1e-10;
 
 macro_rules! clone_all {
     [$($s:ident), *] => {
@@ -31,7 +33,14 @@ macro_rules! clone_all {
     };
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
+enum BallMovingStatus {
+    Runing,
+    Backing,
+    Done,
+}
+
+#[derive(Debug)]
 struct BallStatus {
     x: f64,
     y: f64,
@@ -39,6 +48,7 @@ struct BallStatus {
     // 只是表示与初始方向是否一致
     // 向右的速度也可能是负的
     to_right: bool,
+    moving_status: BallMovingStatus,
 }
 
 #[derive(Default)]
@@ -153,96 +163,108 @@ impl MapStatus {
         let ww = self.mw as f64 * BLOCK_SIZE;
         let hh = self.mh as f64 * BLOCK_SIZE;
 
-        self.draw_basic();
-
         let mut new_ball = 0;
 
-        let mut need_remove = vec![];
+        for ball in self.moving_balls.iter_mut() {
+            match ball.moving_status {
+                BallMovingStatus::Done => {}
+                BallMovingStatus::Backing => { /* TODO */ }
+                BallMovingStatus::Runing => {
+                    let mut rest_lx = v * if ball.to_right { self.vx } else { -self.vx };
+                    let mut rest_ly = v * if ball.to_up { self.vy } else { -self.vy };
 
-        for (idx, ball) in self.moving_balls.iter_mut().enumerate() {
-            let pi = (ball.y / BLOCK_SIZE).floor() as usize;
-            let pj = (ball.x / BLOCK_SIZE).floor() as usize;
+                    // 为了方便检测碰撞，每次只走不离开当前格子的距离
+                    while rest_lx.abs() > EPS && rest_ly.abs() > EPS {
+                        let pi = (ball.y + EPS.copysign(rest_ly)).div_euclid(BLOCK_SIZE) as usize;
+                        let pj = (ball.x + EPS.copysign(rest_lx)).div_euclid(BLOCK_SIZE) as usize;
 
-            let have_left = pj > 0 && self.block_map[pi][pj - 1] > 0;
-            let have_right = pj < self.mw - 1 && self.block_map[pi][pj + 1] > 0;
-            let have_above = pi > 0 && self.block_map[pi - 1][pj] > 0;
-            let have_below = pi < self.mh - 1 && self.block_map[pi + 1][pj] > 0;
+                        let max_lx = BLOCK_SIZE.mul_add(
+                            if rest_lx.is_sign_positive() {
+                                pj + 1
+                            } else {
+                                pj
+                            } as f64,
+                            -ball.x,
+                        );
 
-            let min_x = BALL_R
-                + if have_left {
-                    pj as f64 * BLOCK_SIZE
-                } else {
-                    0.0
-                };
-            let max_x = -BALL_R
-                + if have_right {
-                    (pj + 1) as f64 * BLOCK_SIZE
-                } else {
-                    ww
-                };
-            let min_y = BALL_R
-                + if have_above {
-                    pi as f64 * BLOCK_SIZE
-                } else {
-                    0.0
-                };
-            let max_y = -BALL_R
-                + if have_below {
-                    (pi + 1) as f64 * BLOCK_SIZE
-                } else {
-                    hh
-                };
+                        let max_ly = BLOCK_SIZE.mul_add(
+                            if rest_ly.is_sign_positive() {
+                                pi + 1
+                            } else {
+                                pi
+                            } as f64,
+                            -ball.y,
+                        );
 
-            let new_x = ball.x + v * if ball.to_right { self.vx } else { -self.vx };
-            let new_y = ball.y + v * if ball.to_up { self.vy } else { -self.vy };
+                        let (lx, ly) =
+                            if rest_lx.abs() < max_lx.abs() && rest_ly.abs() < max_ly.abs() {
+                                (rest_lx, rest_ly)
+                            } else if (max_lx * rest_ly).abs() < (max_ly * rest_lx).abs() {
+                                (max_lx, max_lx / rest_lx * rest_ly)
+                            } else {
+                                (max_ly / rest_ly * rest_lx, max_ly)
+                            };
 
-            let real_new_x = if new_x < min_x {
-                if have_left {
-                    self.block_map[pi][pj - 1] -= 1;
+                        log!(JsValue::from_str(&format!(
+                            "{} {}\n{}, {} | {}, {} -> {}, {}",
+                            ball.x, ball.y, rest_lx, rest_ly, max_lx, max_ly, lx, ly
+                        )));
+                        rest_lx -= lx;
+                        rest_ly -= ly;
+
+                        let (next_pj, exist_next_pj) = if lx.is_sign_positive() {
+                            (pj + 1, pj < self.mw - 1)
+                        } else {
+                            (pj - 1, pj > 0)
+                        };
+
+                        let (next_pi, exist_next_pi) = if ly.is_sign_positive() {
+                            (pi + 1, pi < self.mh - 1)
+                        } else {
+                            (pi - 1, pi > 0)
+                        };
+
+                        /*
+                        log!(JsValue::from_str(&format!(
+                            "======= {} {}\n{}, {} -> {}, {}",
+                            ball.x, ball.y, pi, pj, next_pi, next_pj
+                        )));
+                        */
+
+                        if lx.abs() > (max_lx - BALL_R.copysign(max_lx)).abs()
+                            && (!exist_next_pj || self.block_map[pi][next_pj] > 0)
+                        {
+                            ball.x += 2.0 * (max_lx - BALL_R.copysign(max_lx)) - lx;
+                            ball.to_right = !ball.to_right;
+                            rest_lx = -rest_lx;
+                            if exist_next_pj {
+                                self.block_map[pi][next_pj] -= 1;
+                            }
+                        } else {
+                            ball.x += lx
+                        }
+
+                        if ly.abs() > (max_ly - BALL_R.copysign(max_ly)).abs()
+                            && (!exist_next_pi || self.block_map[next_pi][pj] > 0)
+                        {
+                            ball.y += 2.0 * (max_ly - BALL_R.copysign(max_ly)) - ly;
+                            ball.to_up = !ball.to_up;
+                            rest_ly = -rest_ly;
+                            if exist_next_pi {
+                                self.block_map[next_pi][pj] -= 1;
+                            }
+                            if ball.y + ly >= hh - BALL_R {
+                                ball.moving_status = BallMovingStatus::Done;
+                                ball.y = hh - BALL_R;
+                                rest_lx = 0.0;
+                                rest_ly = 0.0;
+                            }
+                        } else {
+                            ball.y += ly
+                        }
+                    }
                 }
-                2.0 * min_x - new_x
-            } else if new_x > max_x {
-                if have_right {
-                    self.block_map[pi][pj + 1] -= 1;
-                }
-                2.0 * max_x - new_x
-            } else {
-                new_x
-            };
-            let real_new_y = if new_y < min_y {
-                if have_above {
-                    self.block_map[pi - 1][pj] -= 1;
-                }
-                2.0 * min_y - new_y
-            } else if new_y > max_y {
-                if have_below {
-                    self.block_map[pi + 1][pj] -= 1;
-                }
-                2.0 * max_y - new_y
-            } else {
-                new_y
-            };
-
-            //log!(JsValue::from_str(&format!("{} {}", new_y, max_y)));
-            //log!(JsValue::from_str(&format!("{} <? {}", new_y, max_y)));
-
-            ball.x = real_new_x;
-            ball.y = real_new_y;
-
-            if new_y < min_y || new_y > max_y {
-                ball.to_up = !ball.to_up;
             }
-            if new_x < min_x || new_x > max_x {
-                ball.to_right = !ball.to_right;
-            }
-
-            if new_y > hh - BALL_R {
-                need_remove.push(idx);
-            }
-        }
-
-        for idx in need_remove.iter() {
-            self.moving_balls.remove(*idx);
         }
 
         // log!(JsValue::from_str(&format!("{:#?}", self.moving_balls)));
@@ -258,6 +280,7 @@ impl MapStatus {
                     y: hh - BALL_R + self.vy * NEXT_BALL_TIME_DIST * go_more,
                     to_up: true,
                     to_right: true,
+                    moving_status: BallMovingStatus::Runing,
                 });
                 self.n_waiting_bolls -= 1;
                 self.waiting_next = (NEXT_BALL_TIME_DIST / v) as u32;
@@ -266,11 +289,20 @@ impl MapStatus {
             }
         }
 
+        self.draw_basic();
         for ball in self.moving_balls.iter() {
             self.draw_ball(ball.x, ball.y);
+            // log!(JsValue::from_str(&format!("draw: {} {}", ball.x, ball.y)));
         }
 
-        Some((0, self.n_waiting_bolls == 0 && self.moving_balls.is_empty()))
+        Some((
+            new_ball,
+            self.n_waiting_bolls == 0
+                && self
+                    .moving_balls
+                    .iter()
+                    .all(|ball| matches!(ball.moving_status, BallMovingStatus::Done)),
+        ))
     }
 }
 
@@ -327,10 +359,11 @@ pub fn game(props: &Props) -> Html {
                 return;
             }
 
-            map_status.borrow_mut().vx = dx / (dx * dx + dy * dy).sqrt();
-            map_status.borrow_mut().vy = dy / (dx * dx + dy * dy).sqrt();
+            map_status.borrow_mut().vx = dx / dx.hypot(dy);
+            map_status.borrow_mut().vy = dy / dx.hypot(dy);
 
             is_moving.set(true);
+            map_status.borrow_mut().moving_balls = vec![];
             map_status.borrow_mut().n_waiting_bolls = *n_balls;
 
             *simulation_interval.borrow_mut() = {
