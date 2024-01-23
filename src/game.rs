@@ -79,7 +79,7 @@ impl MapStatus {
         let n_rank = level as usize;
         let mut rng = rand::thread_rng();
         let n = rng.gen_range(
-            (n_rank / 10 + 1).min(self.mw / 2)..(n_rank / 6 + n_rank.min(3) + 2).min(self.mw - 2),
+            (n_rank / 15 + 1).min(self.mw / 3)..(n_rank / 6 + n_rank.min(3) + 2).min(self.mw - 2),
         );
         let mut new_line: Vec<i32> = (0..self.mw)
             .map(|idx| if idx < n { level as i32 } else { 0 })
