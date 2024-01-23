@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 
 use gloo_console::log;
 use gloo_timers::callback::Interval;
+use rand::seq::SliceRandom;
+use rand::Rng;
 use web_sys::wasm_bindgen::JsValue;
 use web_sys::{CanvasRenderingContext2d, Event, HtmlCanvasElement, HtmlImageElement, PointerEvent};
 use yew::{
@@ -72,7 +74,15 @@ impl MapStatus {
             return true;
         }
 
-        let new_line = vec![level; self.mw]; // TODO
+        let n_rank = level as usize;
+        let mut rng = rand::thread_rng();
+        let n = rng.gen_range(
+            (n_rank / 10 + 1).min(self.mw / 2)..(n_rank / 5 + n_rank.min(3) + 2).min(self.mw),
+        );
+        let mut new_line: Vec<u32> = (0..self.mw)
+            .map(|idx| if idx < n { level } else { 0 })
+            .collect();
+        new_line.shuffle(&mut rng);
         self.block_map.push_front(new_line);
 
         self.draw_basic();
