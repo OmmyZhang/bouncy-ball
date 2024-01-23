@@ -23,7 +23,7 @@ const BG_COLOR: &str = "#5050e0";
 const INTERV: u32 = 8;
 const NEXT_BALL_TIME_DIST: f64 = 3.0 * BALL_SIZE;
 
-const NEW_BALL_ID: u32 = 99999;
+const NEW_BALL_ID: i32 = -1;
 
 const EPS: f64 = 1e-10;
 
@@ -58,7 +58,7 @@ struct MapStatus {
     ctx: Option<CanvasRenderingContext2d>,
     img: Option<HtmlImageElement>,
     moving_balls: Vec<BallStatus>,
-    block_map: VecDeque<Vec<u32>>,
+    block_map: VecDeque<Vec<i32>>,
     n_waiting_bolls: u32,
     mw: usize,
     mh: usize,
@@ -79,11 +79,14 @@ impl MapStatus {
         let n_rank = level as usize;
         let mut rng = rand::thread_rng();
         let n = rng.gen_range(
-            (n_rank / 10 + 1).min(self.mw / 2)..(n_rank / 5 + n_rank.min(3) + 2).min(self.mw),
+            (n_rank / 10 + 1).min(self.mw / 2)..(n_rank / 6 + n_rank.min(3) + 2).min(self.mw - 2),
         );
-        let mut new_line: Vec<u32> = (0..self.mw)
-            .map(|idx| if idx < n { level } else { 0 })
+        let mut new_line: Vec<i32> = (0..self.mw)
+            .map(|idx| if idx < n { level as i32 } else { 0 })
             .collect();
+        if rng.gen_bool(0.8) {
+            new_line[n] = NEW_BALL_ID;
+        }
         new_line.shuffle(&mut rng);
         self.block_map.push_front(new_line);
 
@@ -105,7 +108,7 @@ impl MapStatus {
         }
     }
 
-    fn block_color(&self, v: u32) -> String {
+    fn block_color(&self, v: i32) -> String {
         format!(
             "rgb({}, {}, {})",
             20 + v % 20 * 13,
@@ -114,7 +117,7 @@ impl MapStatus {
         )
     }
 
-    fn draw_block(&self, i: usize, j: usize, v: u32) {
+    fn draw_block(&self, i: usize, j: usize, v: i32) {
         // TODO: use offscreen canvas
         let ctx = self.ctx.as_ref().unwrap();
         if v > 0 {
@@ -150,6 +153,17 @@ impl MapStatus {
                 y + BLOCK_SIZE / 2.0,
             )
             .unwrap();
+        } else if v == NEW_BALL_ID {
+            if let Some(img) = self.img.as_ref() {
+                ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                    img,
+                    j as f64 * BLOCK_SIZE + BLOCK_SIZE / 4.0,
+                    i as f64 * BLOCK_SIZE + BLOCK_SIZE / 4.0,
+                    BLOCK_SIZE / 2.0,
+                    BLOCK_SIZE / 2.0,
+                )
+                .expect("draw ball to get failed");
+            }
         }
     }
 
@@ -183,7 +197,7 @@ impl MapStatus {
                     if rest_lx.abs() < EPS {
                         ball.moving_status = BallMovingStatus::Done;
                     } else {
-                        ball.x += rest_lx.abs().min(v.abs() * 0.4).copysign(rest_lx);
+                        ball.x += rest_lx.abs().min(v.abs() * 0.678).copysign(rest_lx);
                     }
                     log!(JsValue::from_str(&format!("~~ backing: {}", ball.x)));
                 }
@@ -202,6 +216,10 @@ impl MapStatus {
 
                         if self.block_map[rpi][rpj] > 0 {
                             panic!("!!!! {}, {}", pi, pj);
+                        }
+                        if self.block_map[rpi][rpj] == NEW_BALL_ID {
+                            self.block_map[rpi][rpj] = 0;
+                            new_ball += 1;
                         }
 
                         let max_lx = BLOCK_SIZE.mul_add(
@@ -504,7 +522,7 @@ pub fn game(props: &Props) -> Html {
                 ms.waiting_next = 0;
                 ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
 
-                n_balls.set(5);
+                n_balls.set(1);
                 level.set(1);
             },
         );
