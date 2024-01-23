@@ -65,6 +65,8 @@ struct MapStatus {
     waiting_next: u32,
     vx: f64,
     vy: f64,
+    start_x: f64,
+    new_start_x: Option<f64>,
 }
 
 impl MapStatus {
@@ -85,13 +87,7 @@ impl MapStatus {
         new_line.shuffle(&mut rng);
         self.block_map.push_front(new_line);
 
-        self.draw_basic();
-
-        let (x, y) = (
-            self.mw as f64 * BLOCK_SIZE / 2.0,
-            self.mh as f64 * BLOCK_SIZE - BALL_R,
-        );
-        self.draw_ball(x, y);
+        self.draw_basic(true);
 
         false
     }
@@ -157,7 +153,7 @@ impl MapStatus {
         }
     }
 
-    fn draw_basic(&self) {
+    fn draw_basic(&self, with_start_ball: bool) {
         let ww = self.mw as f64 * BLOCK_SIZE;
         let hh = self.mh as f64 * BLOCK_SIZE;
         let ctx = self.ctx.as_ref().unwrap();
@@ -168,10 +164,12 @@ impl MapStatus {
                 self.draw_block(i, j, self.block_map[i][j])
             }
         }
+        if with_start_ball {
+            self.draw_ball(self.start_x, hh - BALL_R)
+        };
     }
 
-    pub fn simulate_moving(&mut self, v: f64) -> Option<(u32, bool)> {
-        let ww = self.mw as f64 * BLOCK_SIZE;
+    pub fn simulate_moving(&mut self, v: f64) -> (u32, bool) {
         let hh = self.mh as f64 * BLOCK_SIZE;
 
         let mut new_ball = 0;
@@ -179,7 +177,16 @@ impl MapStatus {
         for ball in self.moving_balls.iter_mut() {
             match ball.moving_status {
                 BallMovingStatus::Done => {}
-                BallMovingStatus::Backing => { /* TODO */ }
+                BallMovingStatus::Backing => {
+                    let new_start_x = self.new_start_x.unwrap();
+                    let rest_lx = new_start_x - ball.x;
+                    if rest_lx.abs() < EPS {
+                        ball.moving_status = BallMovingStatus::Done;
+                    } else {
+                        ball.x += rest_lx.abs().min(v.abs() * 0.4).copysign(rest_lx);
+                    }
+                    log!(JsValue::from_str(&format!("~~ backing: {}", ball.x)));
+                }
                 BallMovingStatus::Runing => {
                     let mut rest_lx = v * if ball.to_right { self.vx } else { -self.vx };
                     let mut rest_ly = v * if ball.to_up { self.vy } else { -self.vy };
@@ -293,11 +300,22 @@ impl MapStatus {
                             }
 
                             if next_pi == self.mh {
-                                ball.moving_status = BallMovingStatus::Done;
-                                // ball.y = hh - BALL_R;
                                 rest_lx = 0.0;
                                 rest_ly = 0.0;
-                                log!(JsValue::from_str(&format!("done: {}", ball.y)));
+                                if self.new_start_x.is_some() {
+                                    ball.moving_status = BallMovingStatus::Backing;
+                                    log!(JsValue::from_str(&format!(
+                                        "backing: {} {}",
+                                        ball.x, ball.y
+                                    )));
+                                } else {
+                                    self.new_start_x = Some(ball.x);
+                                    ball.moving_status = BallMovingStatus::Done;
+                                    log!(JsValue::from_str(&format!(
+                                        "done: {} {}",
+                                        ball.x, ball.y
+                                    )));
+                                }
                             }
                         }
                     }
@@ -309,12 +327,12 @@ impl MapStatus {
         // log!(JsValue::from_str(&format!("{:#?}", self.n_waiting_bolls)));
 
         if self.n_waiting_bolls > 0 {
-            self.draw_ball(ww / 2.0, hh - BALL_R);
             if self.waiting_next == 0 {
                 let go_more = self.moving_balls.len() as f64
-                    / (self.n_waiting_bolls as f64 + self.moving_balls.len() as f64);
+                    / (self.n_waiting_bolls as f64 + self.moving_balls.len() as f64)
+                    / 10.0;
                 self.moving_balls.push(BallStatus {
-                    x: ww / 2.0 + self.vx * NEXT_BALL_TIME_DIST * go_more,
+                    x: self.start_x + self.vx * NEXT_BALL_TIME_DIST * go_more,
                     y: hh - BALL_R + self.vy * NEXT_BALL_TIME_DIST * go_more,
                     to_up: true,
                     to_right: true,
@@ -327,20 +345,22 @@ impl MapStatus {
             }
         }
 
-        self.draw_basic();
-        for ball in self.moving_balls.iter() {
+        self.draw_basic(self.n_waiting_bolls > 0);
+        self.moving_balls.iter().for_each(|ball| {
             self.draw_ball(ball.x, ball.y);
-            // log!(JsValue::from_str(&format!("draw: {} {}", ball.x, ball.y)));
+        });
+
+        let done = self.n_waiting_bolls == 0
+            && self
+                .moving_balls
+                .iter()
+                .all(|ball| matches!(ball.moving_status, BallMovingStatus::Done));
+        if done {
+            self.start_x = self.new_start_x.unwrap();
+            self.new_start_x = None;
         }
 
-        Some((
-            new_ball,
-            self.n_waiting_bolls == 0
-                && self
-                    .moving_balls
-                    .iter()
-                    .all(|ball| matches!(ball.moving_status, BallMovingStatus::Done)),
-        ))
+        (new_ball, done)
     }
 }
 
@@ -363,7 +383,6 @@ pub fn game(props: &Props) -> Html {
 
     let map_status = use_mut_ref(MapStatus::default);
     let simulation_interval = use_mut_ref(|| None);
-    let start_pos = use_mut_ref(|| (0.0, 0.0));
 
     let v = use_mut_ref(|| 7.0);
 
@@ -382,18 +401,28 @@ pub fn game(props: &Props) -> Html {
             simulation_interval,
             n_balls,
             level,
-            start_pos,
-            v
+            v,
+            canvas_ref
         ];
         Callback::from(move |event: PointerEvent| {
             if *is_moving {
                 return;
             }
             let (x, y) = (event.client_x() as f64, event.client_y() as f64);
-            let (ox, oy) = *start_pos.borrow();
+
+            let canvas = canvas_ref
+                .cast::<HtmlCanvasElement>()
+                .expect("canvas_ref not attached");
+            let rect = canvas.get_bounding_client_rect();
+            let ratio = rect.width() / (map_status.borrow().mw as f64 * BLOCK_SIZE);
+
+            let (ox, oy) = (
+                rect.left() + map_status.borrow().start_x * ratio,
+                rect.bottom() - BALL_R * ratio,
+            );
 
             let (dx, dy) = (x - ox, y - oy);
-            if dy > -20.0 {
+            if dy > BALL_R * ratio {
                 return;
             }
 
@@ -417,7 +446,7 @@ pub fn game(props: &Props) -> Html {
                     let v = *v.borrow();
                     // 保险起见，万一上一个没跑完
                     if let Some(ms) = map_status.try_borrow_mut().ok().as_deref_mut() {
-                        let (n_new_balls, done) = ms.simulate_moving(v).unwrap_or_default();
+                        let (n_new_balls, done) = ms.simulate_moving(v);
                         if n_new_balls > 0 {
                             n_balls.set(*n_balls + n_new_balls);
                         }
@@ -466,16 +495,14 @@ pub fn game(props: &Props) -> Html {
                 ctx.set_text_baseline("middle");
                 ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
 
-                // if canvas , set start_pos as canvas center bottom BASED ON client
-                let rect = canvas.get_bounding_client_rect();
-                *start_pos.borrow_mut() = (rect.width() / 2.0 + rect.left(), rect.bottom());
-
-                map_status.borrow_mut().ctx = Some(ctx);
-                map_status.borrow_mut().moving_balls = vec![];
-                map_status.borrow_mut().block_map = vec![vec![0; mw]; mh].into();
-                map_status.borrow_mut().mw = mw;
-                map_status.borrow_mut().mh = mh;
-                map_status.borrow_mut().waiting_next = 0;
+                let mut ms = map_status.borrow_mut();
+                ms.ctx = Some(ctx);
+                ms.moving_balls = vec![];
+                ms.block_map = vec![vec![0; mw]; mh].into();
+                ms.mw = mw;
+                ms.mh = mh;
+                ms.waiting_next = 0;
+                ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
 
                 n_balls.set(5);
                 level.set(1);
