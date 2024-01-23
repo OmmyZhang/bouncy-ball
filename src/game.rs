@@ -175,8 +175,16 @@ impl MapStatus {
 
                     // 为了方便检测碰撞，每次只走不离开当前格子的距离
                     while rest_lx.abs() > EPS && rest_ly.abs() > EPS {
-                        let pi = (ball.y + EPS.copysign(rest_ly)).div_euclid(BLOCK_SIZE) as usize;
-                        let pj = (ball.x + EPS.copysign(rest_lx)).div_euclid(BLOCK_SIZE) as usize;
+                        let pi = (ball.y + (BALL_R + EPS).copysign(rest_ly)).div_euclid(BLOCK_SIZE)
+                            as usize;
+                        let rpi = ball.y.div_euclid(BLOCK_SIZE) as usize;
+                        let pj = (ball.x + (BALL_R + EPS).copysign(rest_lx)).div_euclid(BLOCK_SIZE)
+                            as usize;
+                        let rpj = ball.x.div_euclid(BLOCK_SIZE) as usize;
+
+                        if self.block_map[rpi][rpj] > 0 {
+                            panic!("!!!! {}, {}", pi, pj);
+                        }
 
                         let max_lx = BLOCK_SIZE.mul_add(
                             if rest_lx.is_sign_positive() {
@@ -184,7 +192,7 @@ impl MapStatus {
                             } else {
                                 pj
                             } as f64,
-                            -ball.x,
+                            -ball.x - BALL_R.copysign(rest_lx),
                         );
 
                         let max_ly = BLOCK_SIZE.mul_add(
@@ -193,24 +201,17 @@ impl MapStatus {
                             } else {
                                 pi
                             } as f64,
-                            -ball.y,
+                            -ball.y - BALL_R.copysign(rest_ly),
                         );
 
-                        let (lx, ly) =
+                        let (lx, ly, reach_x, reach_y) =
                             if rest_lx.abs() < max_lx.abs() && rest_ly.abs() < max_ly.abs() {
-                                (rest_lx, rest_ly)
+                                (rest_lx, rest_ly, false, false)
                             } else if (max_lx * rest_ly).abs() < (max_ly * rest_lx).abs() {
-                                (max_lx, max_lx / rest_lx * rest_ly)
+                                (max_lx, max_lx / rest_lx * rest_ly, true, false)
                             } else {
-                                (max_ly / rest_ly * rest_lx, max_ly)
+                                (max_ly / rest_ly * rest_lx, max_ly, false, true)
                             };
-
-                        log!(JsValue::from_str(&format!(
-                            "{} {}\n{}, {} | {}, {} -> {}, {}",
-                            ball.x, ball.y, rest_lx, rest_ly, max_lx, max_ly, lx, ly
-                        )));
-                        rest_lx -= lx;
-                        rest_ly -= ly;
 
                         let (next_pj, exist_next_pj) = if lx.is_sign_positive() {
                             (pj + 1, pj < self.mw - 1)
@@ -226,41 +227,67 @@ impl MapStatus {
 
                         /*
                         log!(JsValue::from_str(&format!(
-                            "======= {} {}\n{}, {} -> {}, {}",
-                            ball.x, ball.y, pi, pj, next_pi, next_pj
+                            "{} {}\n{}, {} | {}, {} ({} {}) => {}, {}\n {}, {} -> {}, {}",
+                            ball.x,
+                            ball.y,
+                            rest_lx,
+                            rest_ly,
+                            max_lx,
+                            max_ly,
+                            reach_x,
+                            reach_y,
+                            lx,
+                            ly,
+                            pi,
+                            pj,
+                            next_pi,
+                            next_pj
                         )));
                         */
 
-                        if lx.abs() > (max_lx - BALL_R.copysign(max_lx)).abs()
-                            && (!exist_next_pj || self.block_map[pi][next_pj] > 0)
-                        {
-                            ball.x += 2.0 * (max_lx - BALL_R.copysign(max_lx)) - lx;
-                            ball.to_right = !ball.to_right;
-                            rest_lx = -rest_lx;
-                            if exist_next_pj {
+                        rest_lx -= lx;
+                        rest_ly -= ly;
+
+                        ball.x += lx;
+                        ball.y += ly;
+
+                        if reach_x {
+                            if !exist_next_pj {
+                                ball.to_right = !ball.to_right;
+                                rest_lx = -rest_lx;
+                            } else if self.block_map[rpi][next_pj] > 0 {
+                                ball.to_right = !ball.to_right;
+                                rest_lx = -rest_lx;
+                                self.block_map[rpi][next_pj] -= 1;
+                            } else if self.block_map[pi][next_pj] > 0 {
+                                // 撞角近似为撞边
+                                ball.to_right = !ball.to_right;
+                                rest_lx = -rest_lx;
                                 self.block_map[pi][next_pj] -= 1;
                             }
-                        } else {
-                            ball.x += lx
                         }
 
-                        if ly.abs() > (max_ly - BALL_R.copysign(max_ly)).abs()
-                            && (!exist_next_pi || self.block_map[next_pi][pj] > 0)
-                        {
-                            ball.y += 2.0 * (max_ly - BALL_R.copysign(max_ly)) - ly;
-                            ball.to_up = !ball.to_up;
-                            rest_ly = -rest_ly;
-                            if exist_next_pi {
+                        if reach_y {
+                            if !exist_next_pi {
+                                ball.to_up = !ball.to_up;
+                                rest_ly = -rest_ly;
+                            } else if self.block_map[next_pi][rpj] > 0 {
+                                ball.to_up = !ball.to_up;
+                                rest_ly = -rest_ly;
+                                self.block_map[next_pi][rpj] -= 1;
+                            } else if self.block_map[next_pi][pj] > 0 {
+                                ball.to_up = !ball.to_up;
+                                rest_ly = -rest_ly;
                                 self.block_map[next_pi][pj] -= 1;
                             }
-                            if ball.y + ly >= hh - BALL_R {
+
+                            if next_pi == self.mh {
                                 ball.moving_status = BallMovingStatus::Done;
-                                ball.y = hh - BALL_R;
+                                // ball.y = hh - BALL_R;
                                 rest_lx = 0.0;
                                 rest_ly = 0.0;
+                                log!(JsValue::from_str(&format!("done: {}", ball.y)));
                             }
-                        } else {
-                            ball.y += ly
                         }
                     }
                 }
