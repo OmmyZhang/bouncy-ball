@@ -111,9 +111,10 @@ impl MapStatus {
 
     fn block_color(&self, v: u32) -> String {
         format!(
-            "rgb({}, 20, {})",
-            (v * 5 + 20).min(250),
-            (250 * 7 - v).max(20)
+            "rgb({}, {}, {})",
+            20 + v % 20 * 13,
+            (80.0 + ((v as f64 / 31.0).sin()) * 80.0) as u8,
+            (110.0 + ((v as f64 / 47.0).cos()) * 80.0) as u8,
         )
     }
 
