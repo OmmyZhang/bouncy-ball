@@ -199,7 +199,7 @@ impl MapStatus {
                     } else {
                         ball.x += rest_lx.abs().min(v.abs() * 0.678).copysign(rest_lx);
                     }
-                    log!(JsValue::from_str(&format!("~~ backing: {}", ball.x)));
+                    // log!(JsValue::from_str(&format!("~~ backing: {}", ball.x)));
                 }
                 BallMovingStatus::Runing => {
                     let mut rest_lx = v * if ball.to_right { self.vx } else { -self.vx };
@@ -392,7 +392,8 @@ pub struct Props {
 
 #[function_component(Game)]
 pub fn game(props: &Props) -> Html {
-    let n_balls = use_state(|| 0_u32);
+    let n_balls = use_mut_ref(|| 0_u32);
+    let n_balls_to_show = use_state(|| 0_u32);
     let level = use_state(|| 1_u32);
 
     let canvas_ref = use_node_ref();
@@ -418,6 +419,7 @@ pub fn game(props: &Props) -> Html {
             map_status,
             simulation_interval,
             n_balls,
+            n_balls_to_show,
             level,
             v,
             canvas_ref
@@ -449,13 +451,14 @@ pub fn game(props: &Props) -> Html {
 
             is_moving.set(true);
             map_status.borrow_mut().moving_balls = vec![];
-            map_status.borrow_mut().n_waiting_bolls = *n_balls;
+            map_status.borrow_mut().n_waiting_bolls = *n_balls.borrow();
 
             *simulation_interval.borrow_mut() = {
                 clone_all![
                     map_status,
                     simulation_interval,
                     n_balls,
+                    n_balls_to_show,
                     is_moving,
                     level,
                     v
@@ -466,7 +469,8 @@ pub fn game(props: &Props) -> Html {
                     if let Some(ms) = map_status.try_borrow_mut().ok().as_deref_mut() {
                         let (n_new_balls, done) = ms.simulate_moving(v);
                         if n_new_balls > 0 {
-                            n_balls.set(*n_balls + n_new_balls);
+                            *n_balls.borrow_mut() += n_new_balls;
+                            n_balls_to_show.set(*n_balls.borrow());
                         }
                         if done {
                             is_moving.set(false);
@@ -522,7 +526,7 @@ pub fn game(props: &Props) -> Html {
                 ms.waiting_next = 0;
                 ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
 
-                n_balls.set(1);
+                *n_balls.borrow_mut() = 1;
                 level.set(1);
             },
         );
@@ -543,8 +547,8 @@ pub fn game(props: &Props) -> Html {
         <div class="game-container">
             <div class="no-select">
                 <img id="ballImage" src="static/ball.png" onload={img_onload} />
-                <span id="score">{ *n_balls }</span>
-                <span id="level">{ * level }</span>
+                <span id="score">{ *n_balls_to_show }</span>
+                <span id="level">{ *level }</span>
             </div>
             <canvas
                 ref={canvas_ref}
