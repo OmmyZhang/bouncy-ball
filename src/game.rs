@@ -410,15 +410,8 @@ pub fn game(props: &Props) -> Html {
     let mh = use_state(|| props.mh);
 
     let is_full = use_memo(*is_moving, |_| {
-        window()
-            .unwrap()
-            .top()
-            .unwrap()
-            .unwrap()
-            .document()
-            .unwrap()
-            .fullscreen_element()
-            .is_some()
+        window().unwrap().inner_height().unwrap().as_f64().unwrap() as i32
+            == window().unwrap().screen().unwrap().height().unwrap()
     });
 
     let v_onchange = {
