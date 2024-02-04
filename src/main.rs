@@ -16,7 +16,7 @@ fn app() -> Html {
             .as_f64()
             .unwrap()
             .min(500.0);
-        let hsize = window().unwrap().inner_height().unwrap().as_f64().unwrap() - 60.0;
+        let hsize = window().unwrap().inner_height().unwrap().as_f64().unwrap() - 55.0;
 
         (mw as f64 * hsize / wsize).floor() as usize
     });

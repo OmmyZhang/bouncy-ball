@@ -17,6 +17,7 @@ pub fn settings(props: &Props) -> Html {
     let mh = use_state(|| props.mh);
     let v = use_state(|| props.v);
     let show_setting = use_state(|| false);
+
     let v_oninput = {
         let v = v.clone();
         props.v_onchange.reform(move |event: InputEvent| {

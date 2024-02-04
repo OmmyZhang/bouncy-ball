@@ -8,17 +8,25 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 10px 5px;
+  margin: 10px;
+}
+
+.header.full {
+  margin: 15px 50px 5px;
 }
 
 .game-container {
   max-width: 500px;
-  min-height: 100vh;
+  min-height: calc(100vh - 80px);
   margin: 0 auto;
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+.game-container.full {
+  height: 100vh;
 }
 
 canvas {
