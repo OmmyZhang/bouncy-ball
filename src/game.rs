@@ -555,9 +555,11 @@ pub fn game(props: &Props) -> Html {
 
     html! {
         <div class="game-container">
-            <div class="no-select">
-                <img id="ballImage" src="static/ball.png" onload={img_onload} />
-                <span id="score">{ *n_balls_to_show }</span>
+            <div class="header">
+                <div>
+                    <img id="ballImage" src="static/ball.png" onload={img_onload} />
+                    <span id="nBall">{ *n_balls_to_show }</span>
+                </div>
                 <span id="level">{ "level " } { *level }</span>
             </div>
             <canvas

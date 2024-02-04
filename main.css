@@ -1,9 +1,22 @@
+body {
+  margin: 0;
+}
+
+.header {
+  height: 35px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px 0;
+}
+
 .game-container {
   max-width: 500px;
   margin: 0 auto;
   position: relative;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
 }
 
 canvas {
@@ -15,13 +28,12 @@ canvas {
   width: 24px;
 }
 
-#score {
-  font-size: 20px;
+#nBall {
+  font-size: 24px;
   margin-left: 10px;
 }
 
 #level {
-  float: right;
   font-size: 20px;
 }
 
