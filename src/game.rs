@@ -5,12 +5,10 @@ use gloo_timers::callback::Interval;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use web_sys::wasm_bindgen::JsValue;
-use web_sys::{
-    window, CanvasRenderingContext2d, Event, HtmlCanvasElement, HtmlImageElement, PointerEvent,
-};
+use web_sys::{CanvasRenderingContext2d, Event, HtmlCanvasElement, HtmlImageElement, PointerEvent};
 use yew::{
-    classes, function_component, html, use_effect_with, use_memo, use_mut_ref, use_node_ref,
-    use_state, Callback, Html, Properties, TargetCast,
+    classes, function_component, html, use_effect_with, use_mut_ref, use_node_ref, use_state,
+    Callback, Html, Properties, TargetCast,
 };
 
 use crate::settings::Settings;
@@ -390,6 +388,7 @@ pub struct Props {
     pub mw: usize,
     /// map height, numher for blocks
     pub mh: usize,
+    pub is_full: bool,
 }
 
 #[function_component(Game)]
@@ -408,11 +407,6 @@ pub fn game(props: &Props) -> Html {
     let v = use_mut_ref(|| 7.0);
     let mw = use_state(|| props.mw);
     let mh = use_state(|| props.mh);
-
-    let is_full = use_memo(*is_moving, |_| {
-        window().unwrap().inner_height().unwrap().as_f64().unwrap() as i32
-            == window().unwrap().screen().unwrap().height().unwrap()
-    });
 
     let v_onchange = {
         let v = v.clone();
@@ -561,8 +555,8 @@ pub fn game(props: &Props) -> Html {
     }
 
     html! {
-        <div class={classes!("game-container", is_full.then_some("full"))}>
-            <div class={classes!("header", is_full.then_some("full"))}>
+        <div class={classes!("game-container", props.is_full.then_some("full"))}>
+            <div class={classes!("header", props.is_full.then_some("full"))}>
                 <div>
                     <img id="ballImage" src="static/ball.png" onload={img_onload} />
                     <span id="nBall">{ *n_balls_to_show }</span>

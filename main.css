@@ -4,15 +4,15 @@ body {
 }
 
 .header {
-  height: 35px;
+  height: 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 10px;
+  margin: 10px 10px 5px;
 }
 
 .header.full {
-  margin: 15px 50px 5px;
+  margin: 45px 10px 5px;
 }
 
 .game-container {
@@ -27,7 +27,6 @@ body {
 
 .game-container.full {
   height: 100vh;
-  justify-content: flex-end;
 }
 
 canvas {
