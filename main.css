@@ -27,6 +27,7 @@ body {
 
 .game-container.full {
   height: 100vh;
+  justify-content: flex-end;
 }
 
 canvas {
