@@ -412,6 +412,9 @@ pub fn game(props: &Props) -> Html {
     let is_full = use_memo(*is_moving, |_| {
         window()
             .unwrap()
+            .top()
+            .unwrap()
+            .unwrap()
             .document()
             .unwrap()
             .fullscreen_element()
