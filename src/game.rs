@@ -404,12 +404,23 @@ pub fn game(props: &Props) -> Html {
     let simulation_interval = use_mut_ref(|| None);
 
     let v = use_mut_ref(|| 7.0);
+    let mw = use_state(|| props.mw);
+    let mh = use_state(|| props.mh);
 
     let v_onchange = {
         let v = v.clone();
         Callback::from(move |new_v| {
             *v.borrow_mut() = new_v;
         })
+    };
+    let mw_onchange = {
+        let mw = mw.clone();
+        Callback::from(move |w| mw.set(w))
+    };
+
+    let mh_onchange = {
+        let mh = mh.clone();
+        Callback::from(move |h| mh.set(h))
     };
 
     // 点击
@@ -495,41 +506,40 @@ pub fn game(props: &Props) -> Html {
 
     {
         clone_all![canvas_ref, map_status, n_balls, level];
-        use_effect_with(
-            (canvas_ref, props.mw, props.mh),
-            move |(canvas_ref, mw, mh)| {
-                let (mw, mh) = (*mw, *mh);
-                let canvas = canvas_ref
-                    .cast::<HtmlCanvasElement>()
-                    .expect("canvas_ref not attached");
+        use_effect_with((canvas_ref, *mw, *mh), move |(canvas_ref, mw, mh)| {
+            let (mw, mh) = (*mw, *mh);
+            let canvas = canvas_ref
+                .cast::<HtmlCanvasElement>()
+                .expect("canvas_ref not attached");
 
-                let w = mw as u32 * BLOCK_SIZE as u32;
-                let h = mh as u32 * BLOCK_SIZE as u32;
-                canvas.set_width(w);
-                canvas.set_height(h);
+            let w = mw as u32 * BLOCK_SIZE as u32;
+            let h = mh as u32 * BLOCK_SIZE as u32;
+            canvas.set_width(w);
+            canvas.set_height(h);
 
-                let ctx = CanvasRenderingContext2d::from(JsValue::from(
-                    canvas.get_context("2d").unwrap(),
-                ));
+            let ctx =
+                CanvasRenderingContext2d::from(JsValue::from(canvas.get_context("2d").unwrap()));
 
-                ctx.set_fill_style(&JsValue::from_str(BG_COLOR));
-                ctx.set_font("45px  sans-serif");
-                ctx.set_text_baseline("middle");
-                ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
+            ctx.set_fill_style(&JsValue::from_str(BG_COLOR));
+            ctx.set_font("45px  sans-serif");
+            ctx.set_text_baseline("middle");
+            ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
 
-                let mut ms = map_status.borrow_mut();
-                ms.ctx = Some(ctx);
-                ms.moving_balls = vec![];
-                ms.block_map = vec![vec![0; mw]; mh].into();
-                ms.mw = mw;
-                ms.mh = mh;
-                ms.waiting_next = 0;
-                ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
+            let mut ms = map_status.borrow_mut();
+            ms.ctx = Some(ctx);
+            ms.moving_balls = vec![];
+            ms.block_map = vec![vec![0; mw]; mh].into();
+            ms.mw = mw;
+            ms.mh = mh;
+            ms.waiting_next = 0;
+            ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
+            if ms.img.is_some() {
+                ms.update_blocks_and_check_game_end(1);
+            }
 
-                *n_balls.borrow_mut() = 1;
-                level.set(1);
-            },
-        );
+            *n_balls.borrow_mut() = 1;
+            level.set(1);
+        });
     }
 
     // level上涨时重新生成新的一排
@@ -548,13 +558,20 @@ pub fn game(props: &Props) -> Html {
             <div class="no-select">
                 <img id="ballImage" src="static/ball.png" onload={img_onload} />
                 <span id="score">{ *n_balls_to_show }</span>
-                <span id="level">{ *level }</span>
+                <span id="level">{ "level " } { *level }</span>
             </div>
             <canvas
                 ref={canvas_ref}
                 onpointerdown={onclick}
             />
-            <Settings v={*v.borrow()} {v_onchange} />
+            <Settings
+                v={*v.borrow()}
+                {v_onchange}
+                mw={*mw}
+                {mw_onchange}
+                mh={*mh}
+                {mh_onchange}
+            />
         </div>
     }
 }
