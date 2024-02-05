@@ -15,7 +15,7 @@ pub struct Props {
 pub fn settings(props: &Props) -> Html {
     let mw = use_state(|| props.mw);
     let mh = use_state(|| props.mh);
-    let v = use_state(|| props.v);
+    let v = use_state(|| 10);
     let show_setting = use_state(|| false);
 
     let v_oninput = {
@@ -23,8 +23,8 @@ pub fn settings(props: &Props) -> Html {
         props.v_onchange.reform(move |event: InputEvent| {
             let input: HtmlInputElement = event.target_unchecked_into();
             let value = input.value_as_number();
-            v.set(value);
-            value
+            v.set(value as i32);
+            value.powi(3) / 125.0
         })
     };
 
@@ -86,9 +86,9 @@ pub fn settings(props: &Props) -> Html {
                             type="range"
                             value={v.to_string()}
                             id="speedInput"
-                            min={3.0}
-                            max={81.0}
-                            step={0.05}
+                            min={3}
+                            max={40}
+                            step={1}
                             oninput={v_oninput}
                         />
                     </div>

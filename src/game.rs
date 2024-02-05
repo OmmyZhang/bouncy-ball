@@ -28,7 +28,7 @@ const NEW_BALL_ID: i32 = -1;
 const EPS: f64 = 1e-10;
 
 macro_rules! clone_all {
-    [$($s:ident), *] => {
+    [$($s:ident), * $(,)?] => {
         $(
             let $s = $s.clone();
         )*
@@ -70,9 +70,12 @@ struct MapStatus {
 }
 
 impl MapStatus {
-    fn update_blocks_and_check_game_end(&mut self, level: u32) -> bool {
-        let last_line = self.block_map.pop_back().unwrap();
-        if last_line.into_iter().any(|v| v > 0) {
+    fn update_blocks_and_check_game_over(&mut self, level: u32) -> bool {
+        if self.block_map.pop_back().is_none() {
+            return false;
+        }
+        let last_line = self.block_map.back().unwrap();
+        if last_line.iter().any(|v| *v > 0) {
             return true;
         }
 
@@ -96,16 +99,17 @@ impl MapStatus {
     }
 
     fn draw_ball(&self, ox: f64, oy: f64) {
-        if let (Some(ctx), Some(img)) = (self.ctx.as_ref(), self.img.as_ref()) {
-            ctx.draw_image_with_html_image_element_and_dw_and_dh(
-                img,
-                ox - BALL_R,
-                oy - BALL_R,
-                BALL_SIZE,
-                BALL_SIZE,
-            )
-            .expect("draw next ball failed");
-        }
+        let (Some(ctx), Some(img)) = (self.ctx.as_ref(), self.img.as_ref()) else {
+            return;
+        };
+        ctx.draw_image_with_html_image_element_and_dw_and_dh(
+            img,
+            ox - BALL_R,
+            oy - BALL_R,
+            BALL_SIZE,
+            BALL_SIZE,
+        )
+        .expect("draw next ball failed");
     }
 
     fn block_color(&self, v: i32) -> String {
@@ -119,7 +123,7 @@ impl MapStatus {
 
     fn draw_block(&self, i: usize, j: usize, v: i32) {
         // TODO: use offscreen canvas
-        let ctx = self.ctx.as_ref().unwrap();
+        let Some(ctx) = self.ctx.as_ref() else { return };
         if v > 0 {
             let x = j as f64 * BLOCK_SIZE;
             let y = i as f64 * BLOCK_SIZE;
@@ -154,23 +158,22 @@ impl MapStatus {
             )
             .unwrap();
         } else if v == NEW_BALL_ID {
-            if let Some(img) = self.img.as_ref() {
-                ctx.draw_image_with_html_image_element_and_dw_and_dh(
-                    img,
-                    j as f64 * BLOCK_SIZE + BLOCK_SIZE / 4.0,
-                    i as f64 * BLOCK_SIZE + BLOCK_SIZE / 4.0,
-                    BLOCK_SIZE / 2.0,
-                    BLOCK_SIZE / 2.0,
-                )
-                .expect("draw ball to get failed");
-            }
+            let Some(img) = self.img.as_ref() else { return };
+            ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                img,
+                j as f64 * BLOCK_SIZE + BLOCK_SIZE / 4.0,
+                i as f64 * BLOCK_SIZE + BLOCK_SIZE / 4.0,
+                BLOCK_SIZE / 2.0,
+                BLOCK_SIZE / 2.0,
+            )
+            .expect("draw ball to get failed");
         }
     }
 
     fn draw_basic(&self, with_start_ball: bool) {
         let ww = self.mw as f64 * BLOCK_SIZE;
         let hh = self.mh as f64 * BLOCK_SIZE;
-        let ctx = self.ctx.as_ref().unwrap();
+        let Some(ctx) = self.ctx.as_ref() else { return };
         ctx.set_fill_style(&JsValue::from_str(BG_COLOR));
         ctx.fill_rect(0.0, 0.0, ww, hh);
         for i in 0..self.mh {
@@ -400,11 +403,12 @@ pub fn game(props: &Props) -> Html {
     let canvas_ref = use_node_ref();
 
     let is_moving = use_state(|| false);
+    let is_game_over = use_state(|| false);
 
     let map_status = use_mut_ref(MapStatus::default);
     let simulation_interval = use_mut_ref(|| None);
 
-    let v = use_mut_ref(|| 7.0);
+    let v = use_mut_ref(|| 8.0);
     let mw = use_state(|| props.mw);
     let mh = use_state(|| props.mh);
 
@@ -428,16 +432,17 @@ pub fn game(props: &Props) -> Html {
     let onclick = {
         clone_all![
             is_moving,
+            is_game_over,
             map_status,
             simulation_interval,
             n_balls,
             n_balls_to_show,
             level,
             v,
-            canvas_ref
+            canvas_ref,
         ];
         Callback::from(move |event: PointerEvent| {
-            if *is_moving {
+            if *is_moving || *is_game_over {
                 return;
             }
             let (x, y) = (event.client_x() as f64, event.client_y() as f64);
@@ -473,7 +478,7 @@ pub fn game(props: &Props) -> Html {
                     n_balls_to_show,
                     is_moving,
                     level,
-                    v
+                    v,
                 ];
                 Some(Interval::new(INTERV, move || {
                     let v = *v.borrow();
@@ -501,56 +506,75 @@ pub fn game(props: &Props) -> Html {
         Callback::from(move |event: Event| {
             let ball: HtmlImageElement = event.target_unchecked_into();
             map_status.borrow_mut().img = Some(ball);
-            map_status.borrow_mut().update_blocks_and_check_game_end(1);
+            map_status.borrow_mut().update_blocks_and_check_game_over(1);
         })
     };
 
+    //重开
+    let restart_cb = {
+        clone_all![is_game_over];
+        Callback::from(move |_| {
+            is_game_over.set(false);
+        })
+    };
+
+    // 初始化
     {
-        clone_all![canvas_ref, map_status, n_balls, level];
-        use_effect_with((canvas_ref, *mw, *mh), move |(canvas_ref, mw, mh)| {
-            let (mw, mh) = (*mw, *mh);
-            let canvas = canvas_ref
-                .cast::<HtmlCanvasElement>()
-                .expect("canvas_ref not attached");
+        clone_all![canvas_ref, map_status, n_balls, n_balls_to_show, level];
+        use_effect_with(
+            (canvas_ref, *mw, *mh, *is_game_over),
+            move |(canvas_ref, mw, mh, is_game_over)| {
+                if *is_game_over {
+                    return;
+                }
+                let (mw, mh) = (*mw, *mh);
+                let Some(canvas) = canvas_ref.cast::<HtmlCanvasElement>() else {
+                    return;
+                };
 
-            let w = mw as u32 * BLOCK_SIZE as u32;
-            let h = mh as u32 * BLOCK_SIZE as u32;
-            canvas.set_width(w);
-            canvas.set_height(h);
+                let w = mw as u32 * BLOCK_SIZE as u32;
+                let h = mh as u32 * BLOCK_SIZE as u32;
+                canvas.set_width(w);
+                canvas.set_height(h);
 
-            let ctx =
-                CanvasRenderingContext2d::from(JsValue::from(canvas.get_context("2d").unwrap()));
+                let ctx = CanvasRenderingContext2d::from(JsValue::from(
+                    canvas.get_context("2d").unwrap(),
+                ));
 
-            ctx.set_fill_style(&JsValue::from_str(BG_COLOR));
-            ctx.set_font("45px  sans-serif");
-            ctx.set_text_baseline("middle");
-            ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
+                ctx.set_fill_style(&JsValue::from_str(BG_COLOR));
+                ctx.set_font("45px  sans-serif");
+                ctx.set_text_baseline("middle");
+                ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
 
-            let mut ms = map_status.borrow_mut();
-            ms.ctx = Some(ctx);
-            ms.moving_balls = vec![];
-            ms.block_map = vec![vec![0; mw]; mh].into();
-            ms.mw = mw;
-            ms.mh = mh;
-            ms.waiting_next = 0;
-            ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
-            if ms.img.is_some() {
-                ms.update_blocks_and_check_game_end(1);
-            }
+                let mut ms = map_status.borrow_mut();
+                ms.ctx = Some(ctx);
+                ms.moving_balls = vec![];
+                ms.block_map = vec![vec![0; mw]; mh].into();
+                ms.mw = mw;
+                ms.mh = mh;
+                ms.waiting_next = 0;
+                ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
+                if ms.img.is_some() {
+                    ms.update_blocks_and_check_game_over(1);
+                }
 
-            *n_balls.borrow_mut() = 1;
-            level.set(1);
-        });
+                *n_balls.borrow_mut() = 1;
+                n_balls_to_show.set(1);
+                level.set(1);
+            },
+        );
     }
 
     // level上涨时重新生成新的一排
     {
-        clone_all![level, map_status];
+        clone_all![level, map_status, is_game_over];
         use_effect_with(*level, move |level| {
             if map_status
                 .borrow_mut()
-                .update_blocks_and_check_game_end(*level)
-            {}
+                .update_blocks_and_check_game_over(*level)
+            {
+                is_game_over.set(true);
+            }
         });
     }
 
@@ -575,6 +599,18 @@ pub fn game(props: &Props) -> Html {
                 mh={*mh}
                 {mh_onchange}
             />
+            if *is_game_over {
+                <div class="game-over-mask">
+                    <div class="foobar"></div>
+                    <div class="game-over-info" onclick={restart_cb}>
+                        <h3>{ "Game Over" }</h3>
+                        <p>
+                            { "level: " } { *level }
+                            <span id="restart">{ "↻" }</span>
+                        </p>
+                    </div>
+                </div>
+            }
         </div>
     }
 }
