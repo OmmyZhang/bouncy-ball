@@ -74,10 +74,6 @@ impl MapStatus {
         if self.block_map.pop_back().is_none() {
             return false;
         }
-        let last_line = self.block_map.back().unwrap();
-        if last_line.iter().any(|v| *v > 0) {
-            return true;
-        }
 
         let n_rank = level as usize;
         let mut rng = rand::thread_rng();
@@ -95,7 +91,7 @@ impl MapStatus {
 
         self.draw_basic(true);
 
-        false
+        self.block_map.back().unwrap().iter().any(|v| *v > 0)
     }
 
     fn draw_ball(&self, ox: f64, oy: f64) {
