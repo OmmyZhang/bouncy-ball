@@ -1,6 +1,6 @@
 body {
   margin: 0;
-  background: #f0f0f0;
+  background: #c0c0d0;
 }
 
 .header {
@@ -43,6 +43,13 @@ canvas {
   margin-left: 10px;
 }
 
+#mickeyImage {
+  width: 1px;
+  position: fixed;
+  left: 0;
+  top: 0;
+}
+
 #level {
   font-size: 20px;
 }
@@ -66,7 +73,7 @@ canvas {
 }
 
 .settings .inputs {
-  background: #303030a0;
+  background: #202020c0;
   padding: 30px 15px 50px;
   display: flex;
   flex-direction: column;

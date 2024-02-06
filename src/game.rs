@@ -18,7 +18,10 @@ const BALL_R: f64 = BALL_SIZE / 2.0;
 const BLOCK_SIZE: f64 = 100.0;
 const BLOCK_BORDER: f64 = 6.0;
 
-const BG_COLOR: &str = "#5050e0";
+const MICKEY_W: f64 = 924.0;
+const MICKEY_H: f64 = 864.0;
+
+const BG_COLOR: &str = "#3030ff";
 
 const INTERV: u32 = 8;
 const NEXT_BALL_TIME_DIST: f64 = 3.0 * BALL_SIZE;
@@ -57,6 +60,7 @@ struct BallStatus {
 struct MapStatus {
     ctx: Option<CanvasRenderingContext2d>,
     img: Option<HtmlImageElement>,
+    mickey: Option<HtmlImageElement>,
     moving_balls: Vec<BallStatus>,
     block_map: VecDeque<Vec<i32>>,
     n_waiting_bolls: u32,
@@ -172,6 +176,18 @@ impl MapStatus {
         let Some(ctx) = self.ctx.as_ref() else { return };
         ctx.set_fill_style(&JsValue::from_str(BG_COLOR));
         ctx.fill_rect(0.0, 0.0, ww, hh);
+        if let Some(mickey) = self.mickey.as_ref() {
+            let mick_w = ww;
+            let mick_h = mick_w * MICKEY_H / MICKEY_W;
+            ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                mickey,
+                0.0,
+                (hh - mick_h) / 2.0,
+                mick_w,
+                mick_h,
+            )
+            .expect("draw mickey failed");
+        }
         for i in 0..self.mh {
             for j in 0..self.mw {
                 self.draw_block(i, j, self.block_map[i][j])
@@ -404,6 +420,8 @@ pub fn game(props: &Props) -> Html {
     let map_status = use_mut_ref(MapStatus::default);
     let simulation_interval = use_mut_ref(|| None);
 
+    let resource_state = use_state(|| 0_u8);
+
     let v = use_mut_ref(|| 8.0);
     let mw = use_state(|| props.mw);
     let mh = use_state(|| props.mh);
@@ -497,12 +515,20 @@ pub fn game(props: &Props) -> Html {
     };
 
     // 载入图片
-    let img_onload = {
-        clone_all![map_status];
+    let ball_img_onload = {
+        clone_all![map_status, resource_state];
         Callback::from(move |event: Event| {
             let ball: HtmlImageElement = event.target_unchecked_into();
             map_status.borrow_mut().img = Some(ball);
-            map_status.borrow_mut().update_blocks_and_check_game_over(1);
+            resource_state.set(*resource_state | 1);
+        })
+    };
+    let mickey_img_onload = {
+        clone_all![map_status, resource_state];
+        Callback::from(move |event: Event| {
+            let mickey: HtmlImageElement = event.target_unchecked_into();
+            map_status.borrow_mut().mickey = Some(mickey);
+            resource_state.set(*resource_state | 2);
         })
     };
 
@@ -518,8 +544,12 @@ pub fn game(props: &Props) -> Html {
     {
         clone_all![canvas_ref, map_status, n_balls, n_balls_to_show, level];
         use_effect_with(
-            (canvas_ref, *mw, *mh, *is_game_over),
-            move |(canvas_ref, mw, mh, is_game_over)| {
+            (canvas_ref, *mw, *mh, *is_game_over, *resource_state),
+            move |(canvas_ref, mw, mh, is_game_over, resource_state)| {
+                if *resource_state != 3 {
+                    return;
+                }
+
                 if *is_game_over {
                     return;
                 }
@@ -578,11 +608,12 @@ pub fn game(props: &Props) -> Html {
         <div class={classes!("game-container", props.is_full.then_some("full"))}>
             <div class={classes!("header", props.is_full.then_some("full"))}>
                 <div>
-                    <img id="ballImage" src="static/ball.png" onload={img_onload} />
+                    <img id="ballImage" src="static/ball.png" onload={ball_img_onload} />
                     <span id="nBall">{ *n_balls_to_show }</span>
                 </div>
                 <span id="level">{ "level " } { *level }</span>
             </div>
+            <img id="mickeyImage" src="static/mickey.png" onload={mickey_img_onload} />
             <canvas
                 ref={canvas_ref}
                 onpointerdown={onclick}
