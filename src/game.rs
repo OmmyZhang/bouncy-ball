@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use gloo_console::log;
+// use gloo_console::log;
 use gloo_timers::callback::Interval;
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -214,7 +214,6 @@ impl MapStatus {
                     } else {
                         ball.x += rest_lx.abs().min(v.abs() * 0.678).copysign(rest_lx);
                     }
-                    // log!(JsValue::from_str(&format!("~~ backing: {}", ball.x)));
                 }
                 BallMovingStatus::Runing => {
                     let mut rest_lx = v * if ball.to_right { self.vx } else { -self.vx };
@@ -229,9 +228,11 @@ impl MapStatus {
                             as usize;
                         let rpj = ball.x.div_euclid(BLOCK_SIZE) as usize;
 
+                        /*
                         if self.block_map[rpi][rpj] > 0 {
                             panic!("!!!! {}, {}", pi, pj);
                         }
+                        */
                         if self.block_map[rpi][rpj] == NEW_BALL_ID {
                             self.block_map[rpi][rpj] = 0;
                             new_ball += 1;
@@ -276,26 +277,6 @@ impl MapStatus {
                             (pi - 1, pi > 0)
                         };
 
-                        /*
-                        log!(JsValue::from_str(&format!(
-                            "{} {}\n{}, {} | {}, {} ({} {}) => {}, {}\n {}, {} -> {}, {}",
-                            ball.x,
-                            ball.y,
-                            rest_lx,
-                            rest_ly,
-                            max_lx,
-                            max_ly,
-                            reach_x,
-                            reach_y,
-                            lx,
-                            ly,
-                            pi,
-                            pj,
-                            next_pi,
-                            next_pj
-                        )));
-                        */
-
                         rest_lx -= lx;
                         rest_ly -= ly;
 
@@ -337,17 +318,9 @@ impl MapStatus {
                                 rest_ly = 0.0;
                                 if self.new_start_x.is_some() {
                                     ball.moving_status = BallMovingStatus::Backing;
-                                    log!(JsValue::from_str(&format!(
-                                        "backing: {} {}",
-                                        ball.x, ball.y
-                                    )));
                                 } else {
                                     self.new_start_x = Some(ball.x);
                                     ball.moving_status = BallMovingStatus::Done;
-                                    log!(JsValue::from_str(&format!(
-                                        "done: {} {}",
-                                        ball.x, ball.y
-                                    )));
                                 }
                             }
                         }
@@ -355,9 +328,6 @@ impl MapStatus {
                 }
             }
         }
-
-        // log!(JsValue::from_str(&format!("{:#?}", self.moving_balls)));
-        // log!(JsValue::from_str(&format!("{:#?}", self.n_waiting_bolls)));
 
         if self.n_waiting_bolls > 0 {
             if self.waiting_next == 0 {
