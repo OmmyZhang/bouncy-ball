@@ -443,7 +443,7 @@ pub fn game(props: &Props) -> Html {
             );
 
             let (dx, dy) = (x - ox, y - oy);
-            if dy > BALL_R * ratio {
+            if dy > -2 * BALL_R * ratio {
                 return;
             }
 
