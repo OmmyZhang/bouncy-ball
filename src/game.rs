@@ -265,16 +265,16 @@ impl MapStatus {
                                 (max_ly / rest_ly * rest_lx, max_ly, false, true)
                             };
 
-                        let (next_pj, exist_next_pj) = if lx.is_sign_positive() {
-                            (pj + 1, pj < self.mw - 1)
+                        let next_pj = if lx.is_sign_positive() {
+                            (pj < self.mw - 1).then_some(pj + 1)
                         } else {
-                            (pj - 1, pj > 0)
+                            (pj > 0).then_some(pj - 1)
                         };
 
-                        let (next_pi, exist_next_pi) = if ly.is_sign_positive() {
-                            (pi + 1, pi < self.mh - 1)
+                        let next_pi = if ly.is_sign_positive() {
+                            (pi < self.mh - 1).then_some(pi + 1)
                         } else {
-                            (pi - 1, pi > 0)
+                            (pi > 0).then_some(pi - 1)
                         };
 
                         rest_lx -= lx;
@@ -284,36 +284,40 @@ impl MapStatus {
                         ball.y += ly;
 
                         if reach_x {
-                            if !exist_next_pj {
+                            if let Some(next_pj) = next_pj {
+                                if self.block_map[rpi][next_pj] > 0 {
+                                    ball.to_right = !ball.to_right;
+                                    rest_lx = -rest_lx;
+                                    self.block_map[rpi][next_pj] -= 1;
+                                } else if self.block_map[pi][next_pj] > 0 {
+                                    // 撞角近似为撞边
+                                    ball.to_right = !ball.to_right;
+                                    rest_lx = -rest_lx;
+                                    self.block_map[pi][next_pj] -= 1;
+                                }
+                            } else {
                                 ball.to_right = !ball.to_right;
                                 rest_lx = -rest_lx;
-                            } else if self.block_map[rpi][next_pj] > 0 {
-                                ball.to_right = !ball.to_right;
-                                rest_lx = -rest_lx;
-                                self.block_map[rpi][next_pj] -= 1;
-                            } else if self.block_map[pi][next_pj] > 0 {
-                                // 撞角近似为撞边
-                                ball.to_right = !ball.to_right;
-                                rest_lx = -rest_lx;
-                                self.block_map[pi][next_pj] -= 1;
                             }
                         }
 
                         if reach_y {
-                            if !exist_next_pi {
+                            if let Some(next_pi) = next_pi {
+                                if self.block_map[next_pi][rpj] > 0 {
+                                    ball.to_up = !ball.to_up;
+                                    rest_ly = -rest_ly;
+                                    self.block_map[next_pi][rpj] -= 1;
+                                } else if self.block_map[next_pi][pj] > 0 {
+                                    ball.to_up = !ball.to_up;
+                                    rest_ly = -rest_ly;
+                                    self.block_map[next_pi][pj] -= 1;
+                                }
+                            } else {
                                 ball.to_up = !ball.to_up;
                                 rest_ly = -rest_ly;
-                            } else if self.block_map[next_pi][rpj] > 0 {
-                                ball.to_up = !ball.to_up;
-                                rest_ly = -rest_ly;
-                                self.block_map[next_pi][rpj] -= 1;
-                            } else if self.block_map[next_pi][pj] > 0 {
-                                ball.to_up = !ball.to_up;
-                                rest_ly = -rest_ly;
-                                self.block_map[next_pi][pj] -= 1;
                             }
 
-                            if next_pi == self.mh {
+                            if pi == self.mh - 1 && ly.is_sign_positive() {
                                 rest_lx = 0.0;
                                 rest_ly = 0.0;
                                 if self.new_start_x.is_some() {
