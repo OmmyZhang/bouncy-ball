@@ -1,9 +1,10 @@
 use std::collections::VecDeque;
 
-// use gloo_console::log;
+use gloo_console::log;
 use gloo_timers::callback::Interval;
 use rand::seq::SliceRandom;
 use rand::Rng;
+use web_sys::js_sys::Array;
 use web_sys::wasm_bindgen::JsValue;
 use web_sys::{CanvasRenderingContext2d, Event, HtmlCanvasElement, HtmlImageElement, PointerEvent};
 use yew::{
@@ -168,6 +169,27 @@ impl MapStatus {
             )
             .expect("draw ball to get failed");
         }
+    }
+
+    fn draw_aimline(&self, vx: f64, vy: f64) {
+        log!(vx, vy);
+        let Some(ctx) = self.ctx.as_ref() else { return };
+        self.draw_basic(true);
+        let hh = self.mh as f64 * BLOCK_SIZE;
+        ctx.set_line_dash(
+            &[20.0, 15.0]
+                .into_iter()
+                .map(|x| JsValue::from_f64(x))
+                .collect::<Array>()
+                .into(),
+        )
+        .unwrap();
+        ctx.set_line_width(8.0);
+        ctx.begin_path();
+        let (ox, oy) = (self.start_x, hh - BALL_R);
+        ctx.move_to(ox, oy);
+        ctx.line_to(ox + vx * 1000.0, oy + vy * 1000.0);
+        ctx.stroke();
     }
 
     fn draw_basic(&self, with_start_ball: bool) {
@@ -390,6 +412,7 @@ pub fn game(props: &Props) -> Html {
 
     let is_moving = use_state(|| false);
     let is_game_over = use_state(|| false);
+    let is_draw_aimline = use_mut_ref(|| false);
 
     let map_status = use_mut_ref(MapStatus::default);
     let simulation_interval = use_mut_ref(|| None);
@@ -416,6 +439,47 @@ pub fn game(props: &Props) -> Html {
         Callback::from(move |h| mh.set(h))
     };
 
+    // 瞄准
+    let start_aimline = {
+        clone_all![is_draw_aimline, is_moving, is_game_over];
+        Callback::from(move |_| {
+            if !*is_moving && !*is_game_over {
+                *is_draw_aimline.borrow_mut() = true;
+            }
+        })
+    };
+    let cancel_aimline = {
+        clone_all![is_draw_aimline];
+        Callback::from(move |_| *is_draw_aimline.borrow_mut() = false)
+    };
+    let draw_aimline = {
+        clone_all![is_draw_aimline, canvas_ref, map_status];
+        Callback::from(move |event: PointerEvent| {
+            if !*is_draw_aimline.borrow() {
+                return;
+            }
+            let (x, y) = (event.client_x() as f64, event.client_y() as f64);
+
+            let canvas = canvas_ref
+                .cast::<HtmlCanvasElement>()
+                .expect("canvas_ref not attached");
+            let rect = canvas.get_bounding_client_rect();
+            let ratio = rect.width() / (map_status.borrow().mw as f64 * BLOCK_SIZE);
+
+            let (ox, oy) = (
+                rect.left() + map_status.borrow().start_x * ratio,
+                rect.bottom() - BALL_R * ratio,
+            );
+
+            let (dx, dy) = (x - ox, y - oy);
+            if dy > -2.0 * BALL_R * ratio {
+                return;
+            }
+            let (vx, vy) = (dx / dx.hypot(dy), dy / dx.hypot(dy));
+            map_status.borrow().draw_aimline(vx, vy);
+        })
+    };
+
     // 点击
     let onclick = {
         clone_all![
@@ -428,8 +492,10 @@ pub fn game(props: &Props) -> Html {
             level,
             v,
             canvas_ref,
+            is_draw_aimline,
         ];
         Callback::from(move |event: PointerEvent| {
+            *is_draw_aimline.borrow_mut() = false;
             if *is_moving || *is_game_over {
                 return;
             }
@@ -593,7 +659,10 @@ pub fn game(props: &Props) -> Html {
             <img id="mickeyImage" src="static/mickey.png" onload={mickey_img_onload} />
             <canvas
                 ref={canvas_ref}
-                onpointerdown={onclick}
+                onpointerdown={start_aimline}
+                onpointercancel={cancel_aimline}
+                onpointermove={draw_aimline}
+                onpointerup={onclick}
             />
             <Settings
                 v={*v.borrow()}
