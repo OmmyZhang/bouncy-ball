@@ -579,7 +579,10 @@ pub fn game(props: &Props) -> Html {
     }
 
     html! {
-        <div class={classes!("game-container", props.is_full.then_some("full"))}>
+        <div
+            class={classes!("game-container", props.is_full.then_some("full"))}
+            style={format!("max-width: {}px", *mw * 50)}
+        >
             <div class={classes!("header", props.is_full.then_some("full"))}>
                 <div>
                     <img id="ballImage" src="static/ball.png" onload={ball_img_onload} />
