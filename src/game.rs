@@ -488,19 +488,6 @@ pub fn game(props: &Props) -> Html {
         Callback::from(move |h| mh.set(h))
     };
 
-    // 瞄准
-    let start_aimline = {
-        clone_all![is_draw_aimline, is_moving, is_game_over];
-        Callback::from(move |_| {
-            if !*is_moving && !*is_game_over {
-                *is_draw_aimline.borrow_mut() = true;
-            }
-        })
-    };
-    let cancel_aimline = {
-        clone_all![is_draw_aimline];
-        Callback::from(move |_| *is_draw_aimline.borrow_mut() = false)
-    };
     let draw_aimline = {
         clone_all![is_draw_aimline, canvas_ref, map_status];
         Callback::from(move |event: PointerEvent| {
@@ -532,6 +519,22 @@ pub fn game(props: &Props) -> Html {
                 ms.draw_aimline();
             }
         })
+    };
+
+    // 瞄准
+    let start_aimline = {
+        clone_all![is_draw_aimline, is_moving, is_game_over, draw_aimline];
+        Callback::from(move |e| {
+            if !*is_moving && !*is_game_over {
+                *is_draw_aimline.borrow_mut() = true;
+                draw_aimline.emit(e);
+            }
+        })
+    };
+
+    let cancel_aimline = {
+        clone_all![is_draw_aimline];
+        Callback::from(move |_| *is_draw_aimline.borrow_mut() = false)
     };
 
     // 点击
