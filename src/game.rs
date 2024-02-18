@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use gloo_console::log;
+// use gloo_console::log;
 use gloo_timers::callback::Interval;
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -171,25 +171,23 @@ impl MapStatus {
         }
     }
 
-    fn draw_aimline(&self, vx: f64, vy: f64) {
-        log!(vx, vy);
-        let Some(ctx) = self.ctx.as_ref() else { return };
+    fn draw_aimline(&mut self) {
         self.draw_basic(true);
         let hh = self.mh as f64 * BLOCK_SIZE;
-        ctx.set_line_dash(
-            &[20.0, 15.0]
-                .into_iter()
-                .map(|x| JsValue::from_f64(x))
-                .collect::<Array>()
-                .into(),
-        )
-        .unwrap();
-        ctx.set_line_width(8.0);
-        ctx.begin_path();
         let (ox, oy) = (self.start_x, hh - BALL_R);
-        ctx.move_to(ox, oy);
-        ctx.line_to(ox + vx * 1000.0, oy + vy * 1000.0);
-        ctx.stroke();
+        self.move_one_ball(
+            &mut BallStatus {
+                x: ox,
+                y: oy,
+                to_up: true,
+                to_right: true,
+                moving_status: BallMovingStatus::Runing,
+            },
+            self.vx * 5000.0,
+            self.vy * 5000.0,
+            5,
+            true,
+        );
     }
 
     fn draw_basic(&self, with_start_ball: bool) {
@@ -220,12 +218,169 @@ impl MapStatus {
         };
     }
 
+    pub fn move_one_ball(
+        &mut self,
+        ball: &mut BallStatus,
+        lx: f64,
+        ly: f64,
+        max_bounces: u32,
+        is_aimline: bool,
+    ) -> u32 {
+        let mut rest_lx = lx;
+        let mut rest_ly = ly;
+        let mut rest_bounces = max_bounces;
+        let mut new_ball = 0;
+
+        let Some(ctx) = self.ctx.as_ref() else {
+            return 0;
+        };
+        if is_aimline {
+            ctx.begin_path();
+            ctx.move_to(ball.x, ball.y);
+        }
+
+        while rest_lx.abs() > EPS && rest_ly.abs() > EPS && rest_bounces > 0 {
+            let pi = (ball.y + (BALL_R + EPS).copysign(rest_ly)).div_euclid(BLOCK_SIZE) as usize;
+            let rpi = ball.y.div_euclid(BLOCK_SIZE) as usize;
+            let pj = (ball.x + (BALL_R + EPS).copysign(rest_lx)).div_euclid(BLOCK_SIZE) as usize;
+            let rpj = ball.x.div_euclid(BLOCK_SIZE) as usize;
+
+            /*
+            if self.block_map[rpi][rpj] > 0 {
+                panic!("!!!! {}, {}", pi, pj);
+            }
+            */
+            if !is_aimline && self.block_map[rpi][rpj] == NEW_BALL_ID {
+                self.block_map[rpi][rpj] = 0;
+                new_ball += 1;
+            }
+
+            let max_lx = BLOCK_SIZE.mul_add(
+                if rest_lx.is_sign_positive() {
+                    pj + 1
+                } else {
+                    pj
+                } as f64,
+                -ball.x - BALL_R.copysign(rest_lx),
+            );
+
+            let max_ly = BLOCK_SIZE.mul_add(
+                if rest_ly.is_sign_positive() {
+                    pi + 1
+                } else {
+                    pi
+                } as f64,
+                -ball.y - BALL_R.copysign(rest_ly),
+            );
+
+            let (lx, ly, reach_x, reach_y) =
+                if rest_lx.abs() < max_lx.abs() && rest_ly.abs() < max_ly.abs() {
+                    (rest_lx, rest_ly, false, false)
+                } else if (max_lx * rest_ly).abs() < (max_ly * rest_lx).abs() {
+                    (max_lx, max_lx / rest_lx * rest_ly, true, false)
+                } else {
+                    (max_ly / rest_ly * rest_lx, max_ly, false, true)
+                };
+
+            let next_pj = if lx.is_sign_positive() {
+                (pj < self.mw - 1).then_some(pj + 1)
+            } else {
+                (pj > 0).then_some(pj - 1)
+            };
+
+            let next_pi = if ly.is_sign_positive() {
+                (pi < self.mh - 1).then_some(pi + 1)
+            } else {
+                (pi > 0).then_some(pi - 1)
+            };
+
+            rest_lx -= lx;
+            rest_ly -= ly;
+
+            ball.x += lx;
+            ball.y += ly;
+
+            if reach_x {
+                if let Some(next_pj) = next_pj {
+                    if self.block_map[rpi][next_pj] > 0 {
+                        ball.to_right = !ball.to_right;
+                        rest_lx = -rest_lx;
+                        if !is_aimline {
+                            self.block_map[rpi][next_pj] -= 1;
+                        }
+                        rest_bounces -= 1;
+                    } else if self.block_map[pi][next_pj] > 0 {
+                        // 撞角近似为撞边
+                        ball.to_right = !ball.to_right;
+                        rest_lx = -rest_lx;
+                        if !is_aimline {
+                            self.block_map[pi][next_pj] -= 1;
+                        }
+                        rest_bounces -= 1;
+                    }
+                } else {
+                    ball.to_right = !ball.to_right;
+                    rest_lx = -rest_lx;
+                    rest_bounces -= 1;
+                }
+            }
+
+            if reach_y {
+                if let Some(next_pi) = next_pi {
+                    if self.block_map[next_pi][rpj] > 0 {
+                        ball.to_up = !ball.to_up;
+                        rest_ly = -rest_ly;
+                        if !is_aimline {
+                            self.block_map[next_pi][rpj] -= 1;
+                        }
+                        rest_bounces -= 1;
+                    } else if self.block_map[next_pi][pj] > 0 {
+                        ball.to_up = !ball.to_up;
+                        rest_ly = -rest_ly;
+                        if !is_aimline {
+                            self.block_map[next_pi][pj] -= 1;
+                        }
+                        rest_bounces -= 1;
+                    }
+                } else {
+                    ball.to_up = !ball.to_up;
+                    rest_ly = -rest_ly;
+                    rest_bounces -= 1;
+                }
+
+                if pi == self.mh - 1 && ly.is_sign_positive() {
+                    rest_lx = 0.0;
+                    rest_ly = 0.0;
+                    if self.new_start_x.is_some() {
+                        ball.moving_status = BallMovingStatus::Backing;
+                    } else {
+                        if !is_aimline {
+                            self.new_start_x = Some(ball.x);
+                        }
+                        ball.moving_status = BallMovingStatus::Done;
+                    }
+                }
+            }
+
+            if is_aimline {
+                ctx.line_to(ball.x, ball.y);
+            }
+        }
+
+        if is_aimline {
+            ctx.stroke();
+        }
+
+        new_ball
+    }
+
     pub fn simulate_moving(&mut self, v: f64) -> (u32, bool) {
         let hh = self.mh as f64 * BLOCK_SIZE;
 
         let mut new_ball = 0;
 
-        for ball in self.moving_balls.iter_mut() {
+        let mut balls = std::mem::take(&mut self.moving_balls);
+        for ball in balls.iter_mut() {
             match ball.moving_status {
                 BallMovingStatus::Done => {}
                 BallMovingStatus::Backing => {
@@ -238,122 +393,17 @@ impl MapStatus {
                     }
                 }
                 BallMovingStatus::Runing => {
-                    let mut rest_lx = v * if ball.to_right { self.vx } else { -self.vx };
-                    let mut rest_ly = v * if ball.to_up { self.vy } else { -self.vy };
-
-                    // 为了方便检测碰撞，每次只走不离开当前格子的距离
-                    while rest_lx.abs() > EPS && rest_ly.abs() > EPS {
-                        let pi = (ball.y + (BALL_R + EPS).copysign(rest_ly)).div_euclid(BLOCK_SIZE)
-                            as usize;
-                        let rpi = ball.y.div_euclid(BLOCK_SIZE) as usize;
-                        let pj = (ball.x + (BALL_R + EPS).copysign(rest_lx)).div_euclid(BLOCK_SIZE)
-                            as usize;
-                        let rpj = ball.x.div_euclid(BLOCK_SIZE) as usize;
-
-                        /*
-                        if self.block_map[rpi][rpj] > 0 {
-                            panic!("!!!! {}, {}", pi, pj);
-                        }
-                        */
-                        if self.block_map[rpi][rpj] == NEW_BALL_ID {
-                            self.block_map[rpi][rpj] = 0;
-                            new_ball += 1;
-                        }
-
-                        let max_lx = BLOCK_SIZE.mul_add(
-                            if rest_lx.is_sign_positive() {
-                                pj + 1
-                            } else {
-                                pj
-                            } as f64,
-                            -ball.x - BALL_R.copysign(rest_lx),
-                        );
-
-                        let max_ly = BLOCK_SIZE.mul_add(
-                            if rest_ly.is_sign_positive() {
-                                pi + 1
-                            } else {
-                                pi
-                            } as f64,
-                            -ball.y - BALL_R.copysign(rest_ly),
-                        );
-
-                        let (lx, ly, reach_x, reach_y) =
-                            if rest_lx.abs() < max_lx.abs() && rest_ly.abs() < max_ly.abs() {
-                                (rest_lx, rest_ly, false, false)
-                            } else if (max_lx * rest_ly).abs() < (max_ly * rest_lx).abs() {
-                                (max_lx, max_lx / rest_lx * rest_ly, true, false)
-                            } else {
-                                (max_ly / rest_ly * rest_lx, max_ly, false, true)
-                            };
-
-                        let next_pj = if lx.is_sign_positive() {
-                            (pj < self.mw - 1).then_some(pj + 1)
-                        } else {
-                            (pj > 0).then_some(pj - 1)
-                        };
-
-                        let next_pi = if ly.is_sign_positive() {
-                            (pi < self.mh - 1).then_some(pi + 1)
-                        } else {
-                            (pi > 0).then_some(pi - 1)
-                        };
-
-                        rest_lx -= lx;
-                        rest_ly -= ly;
-
-                        ball.x += lx;
-                        ball.y += ly;
-
-                        if reach_x {
-                            if let Some(next_pj) = next_pj {
-                                if self.block_map[rpi][next_pj] > 0 {
-                                    ball.to_right = !ball.to_right;
-                                    rest_lx = -rest_lx;
-                                    self.block_map[rpi][next_pj] -= 1;
-                                } else if self.block_map[pi][next_pj] > 0 {
-                                    // 撞角近似为撞边
-                                    ball.to_right = !ball.to_right;
-                                    rest_lx = -rest_lx;
-                                    self.block_map[pi][next_pj] -= 1;
-                                }
-                            } else {
-                                ball.to_right = !ball.to_right;
-                                rest_lx = -rest_lx;
-                            }
-                        }
-
-                        if reach_y {
-                            if let Some(next_pi) = next_pi {
-                                if self.block_map[next_pi][rpj] > 0 {
-                                    ball.to_up = !ball.to_up;
-                                    rest_ly = -rest_ly;
-                                    self.block_map[next_pi][rpj] -= 1;
-                                } else if self.block_map[next_pi][pj] > 0 {
-                                    ball.to_up = !ball.to_up;
-                                    rest_ly = -rest_ly;
-                                    self.block_map[next_pi][pj] -= 1;
-                                }
-                            } else {
-                                ball.to_up = !ball.to_up;
-                                rest_ly = -rest_ly;
-                            }
-
-                            if pi == self.mh - 1 && ly.is_sign_positive() {
-                                rest_lx = 0.0;
-                                rest_ly = 0.0;
-                                if self.new_start_x.is_some() {
-                                    ball.moving_status = BallMovingStatus::Backing;
-                                } else {
-                                    self.new_start_x = Some(ball.x);
-                                    ball.moving_status = BallMovingStatus::Done;
-                                }
-                            }
-                        }
-                    }
+                    new_ball += self.move_one_ball(
+                        ball,
+                        v * if ball.to_right { self.vx } else { -self.vx },
+                        v * if ball.to_up { self.vy } else { -self.vy },
+                        1000,
+                        false,
+                    );
                 }
             }
         }
+        self.moving_balls = balls;
 
         if self.n_waiting_bolls > 0 {
             if self.waiting_next == 0 {
@@ -475,8 +525,12 @@ pub fn game(props: &Props) -> Html {
             if dy > -2.0 * BALL_R * ratio {
                 return;
             }
-            let (vx, vy) = (dx / dx.hypot(dy), dy / dx.hypot(dy));
-            map_status.borrow().draw_aimline(vx, vy);
+            if let Ok(mut ms) = map_status.try_borrow_mut() {
+                ms.vx = dx / dx.hypot(dy);
+                ms.vy = dy / dx.hypot(dy);
+
+                ms.draw_aimline();
+            }
         })
     };
 
@@ -611,6 +665,16 @@ pub fn game(props: &Props) -> Html {
                 ctx.set_font("45px  sans-serif");
                 ctx.set_text_baseline("middle");
                 ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
+
+                ctx.set_line_width(5.0);
+                ctx.set_line_dash(
+                    &[20.0, 15.0]
+                        .into_iter()
+                        .map(JsValue::from_f64)
+                        .collect::<Array>()
+                        .into(),
+                )
+                .unwrap();
 
                 let mut ms = map_status.borrow_mut();
                 ms.ctx = Some(ctx);
