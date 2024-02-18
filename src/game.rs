@@ -241,19 +241,7 @@ impl MapStatus {
 
         while rest_lx.abs() > EPS && rest_ly.abs() > EPS && rest_bounces > 0 {
             let pi = (ball.y + (BALL_R + EPS).copysign(rest_ly)).div_euclid(BLOCK_SIZE) as usize;
-            let rpi = ball.y.div_euclid(BLOCK_SIZE) as usize;
             let pj = (ball.x + (BALL_R + EPS).copysign(rest_lx)).div_euclid(BLOCK_SIZE) as usize;
-            let rpj = ball.x.div_euclid(BLOCK_SIZE) as usize;
-
-            /*
-            if self.block_map[rpi][rpj] > 0 {
-                panic!("!!!! {}, {}", pi, pj);
-            }
-            */
-            if !is_aimline && self.block_map[rpi][rpj] == NEW_BALL_ID {
-                self.block_map[rpi][rpj] = 0;
-                new_ball += 1;
-            }
 
             let max_lx = BLOCK_SIZE.mul_add(
                 if rest_lx.is_sign_positive() {
@@ -282,6 +270,21 @@ impl MapStatus {
                     (max_ly / rest_ly * rest_lx, max_ly, false, true)
                 };
 
+            rest_lx -= lx;
+            rest_ly -= ly;
+
+            ball.x += lx;
+            ball.y += ly;
+
+            // 移动前后pi pj不会变，但是real pi/pj可能会，所以移动后再算
+            let rpi = ball.y.div_euclid(BLOCK_SIZE) as usize;
+            let rpj = ball.x.div_euclid(BLOCK_SIZE) as usize;
+
+            if !is_aimline && self.block_map[rpi][rpj] == NEW_BALL_ID {
+                self.block_map[rpi][rpj] = 0;
+                new_ball += 1;
+            }
+
             let next_pj = if lx.is_sign_positive() {
                 (pj < self.mw - 1).then_some(pj + 1)
             } else {
@@ -293,12 +296,6 @@ impl MapStatus {
             } else {
                 (pi > 0).then_some(pi - 1)
             };
-
-            rest_lx -= lx;
-            rest_ly -= ly;
-
-            ball.x += lx;
-            ball.y += ly;
 
             if reach_x {
                 if let Some(next_pj) = next_pj {
