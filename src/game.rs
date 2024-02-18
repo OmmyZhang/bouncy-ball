@@ -522,10 +522,11 @@ pub fn game(props: &Props) -> Html {
             );
 
             let (dx, dy) = (x - ox, y - oy);
-            if dy > -2.0 * BALL_R * ratio {
-                return;
-            }
             if let Ok(mut ms) = map_status.try_borrow_mut() {
+                if dy > -2.0 * BALL_R * ratio {
+                    ms.draw_basic(true);
+                    return;
+                }
                 ms.vx = dx / dx.hypot(dy);
                 ms.vy = dy / dx.hypot(dy);
 
