@@ -33,6 +33,8 @@ const FULL_RESOURCE: u8 = 3;
 
 const EPS: f64 = 1e-10;
 
+const INIT_BLOCK_HEIGHT: u32 = 5;
+
 macro_rules! clone_all {
     [$($s:ident), * $(,)?] => {
         $(
@@ -688,7 +690,9 @@ pub fn game(props: &Props) -> Html {
                 ms.waiting_next = 0;
                 ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
                 if ms.img.is_some() {
-                    ms.update_blocks_and_check_game_over(1);
+                    for i in 0..INIT_BLOCK_HEIGHT {
+                        ms.update_blocks_and_check_game_over(i + 1);
+                    }
                 }
 
                 *n_balls.borrow_mut() = 1;
@@ -702,9 +706,12 @@ pub fn game(props: &Props) -> Html {
     {
         clone_all![level, map_status, is_game_over];
         use_effect_with(*level, move |level| {
+            if *level == 1 || *is_game_over {
+                return;
+            }
             if map_status
                 .borrow_mut()
-                .update_blocks_and_check_game_over(*level)
+                .update_blocks_and_check_game_over(INIT_BLOCK_HEIGHT + *level - 1)
             {
                 is_game_over.set(true);
             }
