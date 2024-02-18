@@ -29,6 +29,8 @@ const NEXT_BALL_TIME_DIST: f64 = 3.0 * BALL_SIZE;
 
 const NEW_BALL_ID: i32 = -1;
 
+const FULL_RESOURCE: u8 = 3;
+
 const EPS: f64 = 1e-10;
 
 macro_rules! clone_all {
@@ -638,7 +640,7 @@ pub fn game(props: &Props) -> Html {
         use_effect_with(
             (canvas_ref, *mw, *mh, *is_game_over, *resource_state),
             move |(canvas_ref, mw, mh, is_game_over, resource_state)| {
-                if *resource_state != 3 {
+                if *resource_state != FULL_RESOURCE {
                     return;
                 }
 
@@ -726,6 +728,11 @@ pub fn game(props: &Props) -> Html {
                 onpointermove={draw_aimline}
                 onpointerup={onclick}
             />
+            if *resource_state != FULL_RESOURCE {
+                <div class="loading-hint">
+                    { "Loading..." }
+                </div>
+            }
             <Settings
                 v={*v.borrow()}
                 {v_onchange}

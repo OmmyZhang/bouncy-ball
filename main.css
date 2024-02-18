@@ -28,6 +28,16 @@ body {
   height: 100vh;
 }
 
+.loading-hint {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  width: 100vw;
+  font-size: 48px;
+  font-weight: bold;
+  text-align: center;
+}
+
 canvas {
   width: 100%;
   touch-action: none;
