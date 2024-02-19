@@ -490,6 +490,7 @@ pub fn game(props: &Props) -> Html {
         Callback::from(move |h| mh.set(h))
     };
 
+    // 瞄准
     let draw_aimline = {
         clone_all![is_draw_aimline, canvas_ref, map_status];
         Callback::from(move |event: PointerEvent| {
@@ -523,7 +524,6 @@ pub fn game(props: &Props) -> Html {
         })
     };
 
-    // 瞄准
     let start_aimline = {
         clone_all![is_draw_aimline, is_moving, is_game_over, draw_aimline];
         Callback::from(move |e| {
