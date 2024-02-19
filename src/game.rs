@@ -719,7 +719,7 @@ pub fn game(props: &Props) -> Html {
     html! {
         <div
             class={classes!("game-container", props.is_full.then_some("full"))}
-            style={format!("max-width: {}px", *mw * 50)}
+            style={format!("max-width: {}px", 300.max(*mw * 50))}
         >
             <div class={classes!("header", props.is_full.then_some("full"))}>
                 <div>
