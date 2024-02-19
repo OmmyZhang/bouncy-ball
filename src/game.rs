@@ -33,8 +33,6 @@ const FULL_RESOURCE: u8 = 3;
 
 const EPS: f64 = 1e-10;
 
-const INIT_BLOCK_HEIGHT: u32 = 5;
-
 macro_rules! clone_all {
     [$($s:ident), * $(,)?] => {
         $(
@@ -79,18 +77,17 @@ struct MapStatus {
 }
 
 impl MapStatus {
-    fn update_blocks_and_check_game_over(&mut self, level: u32) -> bool {
+    fn update_blocks_and_check_game_over(&mut self, n_rank: usize) -> bool {
         if self.block_map.pop_back().is_none() {
             return false;
         }
 
-        let n_rank = level as usize;
         let mut rng = rand::thread_rng();
         let n = rng.gen_range(
             (n_rank / 15 + 1).min(self.mw / 3)..(n_rank / 6 + n_rank.min(3) + 2).min(self.mw - 2),
         );
         let mut new_line: Vec<i32> = (0..self.mw)
-            .map(|idx| if idx < n { level as i32 } else { 0 })
+            .map(|idx| if idx < n { n_rank as i32 } else { 0 })
             .collect();
         if rng.gen_bool(0.8) {
             new_line[n] = NEW_BALL_ID;
@@ -690,7 +687,7 @@ pub fn game(props: &Props) -> Html {
                 ms.waiting_next = 0;
                 ms.start_x = mw as f64 * BLOCK_SIZE / 2.0;
                 if ms.img.is_some() {
-                    for i in 0..INIT_BLOCK_HEIGHT {
+                    for i in 0..ms.mh / 2 {
                         ms.update_blocks_and_check_game_over(i + 1);
                     }
                 }
@@ -709,9 +706,10 @@ pub fn game(props: &Props) -> Html {
             if *level == 1 || *is_game_over {
                 return;
             }
+            let n_rank = map_status.borrow().mh / 2 + *level as usize - 1;
             if map_status
                 .borrow_mut()
-                .update_blocks_and_check_game_over(INIT_BLOCK_HEIGHT + *level - 1)
+                .update_blocks_and_check_game_over(n_rank)
             {
                 is_game_over.set(true);
             }
